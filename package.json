@@ -4,7 +4,8 @@
   "description": "Optimistically apply actions that can be later commited or reverted.",
   "keywords": [],
   "files": [
-    "lib"
+    "lib",
+    "index.js"
   ],
   "devDependencies": {
     "babel-cli": "^6.18.0",
