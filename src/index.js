@@ -7,15 +7,17 @@ var REVERT = 'REVERT';
 var INITIAL_OPTIMIST = [];
 var defaultOptions = {
   separateState, combineState, validateState,
+  mapActionToOptimist: action => action.optimist,
 };
 
 module.exports = optimist;
 module.exports.BEGIN = BEGIN;
 module.exports.COMMIT = COMMIT;
 module.exports.REVERT = REVERT;
+
 function optimist(fn, options) {
   let {
-    separateState, combineState, validateState
+    separateState, combineState, validateState, mapActionToOptimist,
   } = Object.assign({}, defaultOptions, options);
 
   function beginReducer(state, action) {
@@ -27,12 +29,13 @@ function optimist(fn, options) {
   }
   function commitReducer(state, action) {
     let {optimist, innerState} = separateState(state);
+    const optimistAction = mapActionToOptimist(action);
     var newOptimist = [], started = false, committed = false;
     optimist.forEach(function (entry) {
       if (started) {
         if (
           entry.beforeState &&
-          matchesTransaction(entry.action, action.optimist.id)
+          matchesTransaction(entry.action, optimistAction.id)
         ) {
           committed = true;
           newOptimist.push({action: entry.action});
@@ -41,35 +44,36 @@ function optimist(fn, options) {
         }
       } else if (
         entry.beforeState &&
-        !matchesTransaction(entry.action, action.optimist.id)
+        !matchesTransaction(entry.action, optimistAction.id)
       ) {
         started = true;
         newOptimist.push(entry);
       } else if (
         entry.beforeState &&
-        matchesTransaction(entry.action, action.optimist.id)
+        matchesTransaction(entry.action, optimistAction.id)
       ) {
         committed = true;
       }
     });
     if (!committed) {
-      console.error('Cannot commit transaction with id "' + action.optimist.id + '" because it does not exist');
+      console.error('Cannot commit transaction with id "' + optimistAction.id + '" because it does not exist');
     }
     optimist = newOptimist;
     return baseReducer(optimist, innerState, action);
   }
   function revertReducer(state, action) {
     let {optimist, innerState} = separateState(state);
+    const optimistAction = mapActionToOptimist(action);
     var newOptimist = [], started = false, gotInitialState = false, currentState = innerState;
     optimist.forEach(function (entry) {
       if (
         entry.beforeState &&
-        matchesTransaction(entry.action, action.optimist.id)
+        matchesTransaction(entry.action, optimistAction.id)
       ) {
         currentState = entry.beforeState;
         gotInitialState = true;
       }
-      if (!matchesTransaction(entry.action, action.optimist.id)) {
+      if (!matchesTransaction(entry.action, optimistAction.id)) {
         if (
           entry.beforeState
         ) {
@@ -92,7 +96,7 @@ function optimist(fn, options) {
       }
     });
     if (!gotInitialState) {
-      console.error('Cannot revert transaction with id "' + action.optimist.id + '" because it does not exist');
+      console.error('Cannot revert transaction with id "' + optimistAction.id + '" because it does not exist');
     }
     optimist = newOptimist;
     return baseReducer(optimist, currentState, action);
@@ -105,9 +109,17 @@ function optimist(fn, options) {
     validateState(innerState, action);
     return combineState(optimist, innerState);
   }
+  function matchesTransaction(action, id) {
+    const optimistAction = mapActionToOptimist(action);
+    return (
+      optimistAction &&
+      optimistAction.id === id
+    );
+  }
   return function (state, action) {
-    if (action.optimist) {
-      switch (action.optimist.type) {
+    const optimistAction = mapActionToOptimist(action);
+    if (optimistAction) {
+      switch (optimistAction.type) {
         case BEGIN:
           return beginReducer(state, action);
         case COMMIT:
@@ -119,13 +131,6 @@ function optimist(fn, options) {
     let separated = separateState(state);
     return baseReducer(separated.optimist, separated.innerState, action);
   };
-}
-
-function matchesTransaction(action, id) {
-  return (
-    action.optimist &&
-    action.optimist.id === id
-  );
 }
 
 function validateState(newState, action) {
